@@ -1,8 +1,10 @@
+#include <HardwareSerial.h>
 #include <SoftwareSerial.h>
 #define RX 2
 #define TX 3
 
-SoftwareSerial midiSerial(RX, TX); // RX, TX
+//SoftwareSerial * midiSerial = new SoftwareSerial(RX, TX); // RX, TX;
+HardwareSerial * midiSerial = &Serial ;
 
 uint8_t columnLines[] {13,5,6,7,8,9};
 uint8_t rowLines[] {12,11,10,4};
@@ -30,17 +32,20 @@ bool shiftButton2Holded = false;
 uint8_t currentMidiChannel =0;
 int currentTranspose = 0;
 uint8_t currentVelocity  = 110;
+uint8_t noteOnTable[128];
 
 
 void setup() {
 
   int r,c  ;
-  Serial.begin(115200);
-  midiSerial.begin(31250);
+  
+  midiSerial->begin(31250);
   for ( r = 0 ; r< sizeof(rowLines) ; r++ ) { pinMode(rowLines[r],OUTPUT);digitalWrite(columnLines[c],HIGH) ;}
   for ( c = 0 ; c< sizeof(columnLines) ; c++ ) { pinMode(columnLines[c],INPUT_PULLUP) ;  }
+  
+  memset(noteOnTable,0,sizeof(noteOnTable));
     
-utility1();
+//utility1();
 
          
 }
@@ -73,17 +78,36 @@ void utility1(){
   }
 }
 
+
+
 void sendConfirmNote(uint8_t note,uint8_t velocity) {
-     midiSerial.write(0x90+currentMidiChannel);midiSerial.write(note);midiSerial.write(velocity);
+     midiSerial->write(0x90+currentMidiChannel);midiSerial->write(note);midiSerial->write(velocity);
      delay(100);
-     midiSerial.write(0x80+currentMidiChannel);midiSerial.write(note);midiSerial.write(velocity);
+     midiSerial->write(0x80+currentMidiChannel);midiSerial->write(note);midiSerial->write(velocity);
+}
+
+void panicMode() {
+
+    for ( uint8_t c = 0 ; c<=15 ; c++ ) {
+        for ( uint8_t n = 0 ; n <= 127 ; n++ ) {
+           midiSerial->write( 0x80 + c );midiSerial->write(n);midiSerial->write(64);
+           noteOnTable[n] = 0;         
+        }      
+    }
+  
 }
 
 void processEvent(int value,bool isOn){
   
- if (value == SHIFT_BUTTON1) { shiftButton1Holded = isOn; return;}
- if (value == SHIFT_BUTTON2) { shiftButton2Holded = isOn; return;}
 
+
+ uint8_t command = currentMidiChannel + ( isOn ? 0x90 : 0x80 );     
+ 
+ if (value == SHIFT_BUTTON1) { shiftButton1Holded = isOn; }
+ if (value == SHIFT_BUTTON2) { shiftButton2Holded = isOn; }
+
+
+ 
  // Buttons
  if ( value < 0 ) {
   
@@ -110,7 +134,7 @@ void processEvent(int value,bool isOn){
        } else
 
        // Reset to default / Reset all controllers     
-       if ( value = -7 ){ 
+       if ( value == -7 ){ 
           currentTranspose   = 0; 
           currentMidiChannel = 0;   
           currentVelocity    = 110;
@@ -120,11 +144,21 @@ void processEvent(int value,bool isOn){
     if (isOn && !shiftButton1Holded && shiftButton2Holded ) {
 
        // Reset NanoKeyboard
-       if ( value = -7 ){ 
+       if ( value == -7 ){ 
           softReset();
-       }           
-      
-      
+       }    
+
+      // Panic
+       if ( value == -6 ){ 
+          panicMode();
+       }                                           
+    } else if ( !shiftButton1Holded && !shiftButton2Holded ) {
+
+        if ( value == -3 ){
+            midiSerial->write(command);midiSerial->write(12);midiSerial->write(currentVelocity);
+            noteOnTable[12] = isOn ;
+         }    
+
     }
 
  } 
@@ -141,19 +175,38 @@ void processEvent(int value,bool isOn){
           return;
      }
 
-     uint8_t noteOffset = 0;
+     uint8_t  note = value+ROOTKEY+ currentTranspose;
+     int      noteOffset = 0;     
      
      // SHIFT1 | SHIFT2  + KEY : Midi instant transpose
-     if ( shiftButton1Holded && ! shiftButton2Holded ) {
-          noteOffset = value+ROOTKEY+ currentTranspose - 12 < 0 ? 0 : - 12;
+     
+     // Manage note off when shift keys were pressed
+     if ( !isOn ) {
+
+          if ( (note-12) >= 0 && (note+12) <= 0x78 ) {
+             if ( noteOnTable[note-12] == 2) noteOffset = -12;
+             else if ( noteOnTable[note+12] == 2) noteOffset = 12;
+             if (noteOffset) {
+                  noteOnTable[note + noteOffset] = 0;
+                  midiSerial->write(command);midiSerial->write(note+noteOffset);midiSerial->write(currentVelocity);
+                  return;
+             }
+          }      
+     } else
+
+     // Note ON               
+     {
+         if ( shiftButton1Holded && ! shiftButton2Holded ) {
+                noteOffset = note - 12 < 0 ? 0 : - 12;
+         }
+        
+         if ( !shiftButton1Holded && shiftButton2Holded ) {
+                noteOffset = note + 12 > 0x78 ? 0:12;     
+         }
      }
 
-     if ( !shiftButton1Holded && shiftButton2Holded ) {
-          noteOffset = value+ROOTKEY+ currentTranspose + 12 > 0x78 ? 12:0;
-     }
-
-     uint8_t command = currentMidiChannel + ( isOn ? 0x90 : 0x80 );
-     midiSerial.write(command);midiSerial.write(value+ROOTKEY+ currentTranspose+noteOffset);midiSerial.write(currentVelocity);
+     midiSerial->write(command);midiSerial->write(note+noteOffset);midiSerial->write(currentVelocity);
+     noteOnTable[note+noteOffset] = noteOffset ? 2 : isOn ;
  }
 }  
 
