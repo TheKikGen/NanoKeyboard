@@ -1,18 +1,56 @@
+/*
+
+  NANOKEYBOARD
+  A 1 octave midi keyboard from a TOY
+  Copyright (C) 2017/2018 by The KikGen labs.
+
+  MAIN FILE - ARDUINO SKETCH
+  
+  Permission to use, copy, modify, distribute, and sell this
+  software and its documentation for any purpose is hereby granted
+  without fee, provided that the above copyright notice appear in
+  all copies and that both that the copyright notice and this
+  permission notice and warranty disclaimer appear in supporting
+  documentation, and that the name of the author not be used in
+  advertising or publicity pertaining to distribution of the
+  software without specific, written prior permission.
+
+  The author disclaim all warranties with regard to this
+  software, including all implied warranties of merchantability
+  and fitness.  In no event shall the author be liable for any
+  special, indirect or consequential damages or any damages
+  whatsoever resulting from loss of use, data or profits, whether
+  in an action of contract, negligence or other tortious action,
+  arising out of or in connection with the use or performance of
+  this software.
+
+   Licence : MIT.
+*/
+
 #include <HardwareSerial.h>
 #include <SoftwareSerial.h>
-#define RX 2
-#define TX 3
 
+
+// When using Sotware serial 
+//#define RX 2
+//#define TX 3
 //SoftwareSerial * midiSerial = new SoftwareSerial(RX, TX); // RX, TX;
+
 HardwareSerial * midiSerial = &Serial ;
 
+
+// Keys rows and columns to scan (pin no)
 uint8_t columnLines[] {13,5,6,7,8,9};
 uint8_t rowLines[] {12,11,10,4};
 
+// Midi keyboard C root key
 #define ROOTKEY 0x30        // C3
+
+// Buttons used for shift function
 #define SHIFT_BUTTON1 -1
 #define SHIFT_BUTTON2 -2
 
+// Values assigned to keys
 // Positive keys = midi note offset from ROOTKEY
 // Negative key = buttons.
 int keyValues[4][6]={{0  ,1  ,2   ,3  ,4   ,5 }, 
@@ -20,21 +58,29 @@ int keyValues[4][6]={{0  ,1  ,2   ,3  ,4   ,5 },
                      {12 ,-3 ,-4  ,-5 ,-6  ,-7},
                      {255,255,255 ,255,-1  ,-2}
                     };
+// Key current states. 1 = pressed. 
 uint8_t keyStates[4][6]={ {0,0,0,0,0,0}, 
                           {0,0,0,0,0,0},
                           {0,0,0,0,0,0},
                           {0,0,0,0,0,0}
                         };
 
+// Midi channels from keyboard keys
+// -1 = nothing
 int midiChannelKeyMap[]={0,-1,1,-1,2,3,-1,4,-1,5,-1,6,7};
+
 bool shiftButton1Holded = false;
 bool shiftButton2Holded = false;
+
+// Current keyboard parameters
 uint8_t currentMidiChannel =0;
 int currentTranspose = 0;
 uint8_t currentVelocity  = 110;
 uint8_t noteOnTable[128];
 
-
+/////////////////////////////////////////////////////////////////
+// SETUP
+/////////////////////////////////////////////////////////////////
 void setup() {
 
   int r,c  ;
@@ -46,13 +92,19 @@ void setup() {
   memset(noteOnTable,0,sizeof(noteOnTable));
     
 //utility1();
-
          
 }
-/////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
 // Software reset 
-/////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
 void(* softReset) (void) = 0; //declare reset function @ address 0
+
+/////////////////////////////////////////////////////////////////
+// UTILITY - SCANNING KEYS
+// --------------------------------------------------------------
+// To use with the software serial as hardware serial
+// is used to display results
+/////////////////////////////////////////////////////////////////
 
 void utility1(){
   
@@ -78,14 +130,20 @@ void utility1(){
   }
 }
 
-
-
+/////////////////////////////////////////////////////////////////
+// Send a confirmation note when chenging params
+/////////////////////////////////////////////////////////////////
 void sendConfirmNote(uint8_t note,uint8_t velocity) {
      midiSerial->write(0x90+currentMidiChannel);midiSerial->write(note);midiSerial->write(velocity);
      delay(100);
      midiSerial->write(0x80+currentMidiChannel);midiSerial->write(note);midiSerial->write(velocity);
 }
 
+/////////////////////////////////////////////////////////////////
+// Panic mode
+// --------------------------------------------------------------
+// reset everything MIDI related
+/////////////////////////////////////////////////////////////////
 void panicMode() {
 
     for ( uint8_t c = 0 ; c<=15 ; c++ ) {
@@ -97,17 +155,18 @@ void panicMode() {
   
 }
 
+/////////////////////////////////////////////////////////////////
+// Process a note or a button event ON / OFF
+// --------------------------------------------------------------
+// 
+/////////////////////////////////////////////////////////////////
 void processEvent(int value,bool isOn){
-  
-
 
  uint8_t command = currentMidiChannel + ( isOn ? 0x90 : 0x80 );     
  
  if (value == SHIFT_BUTTON1) { shiftButton1Holded = isOn; }
  if (value == SHIFT_BUTTON2) { shiftButton2Holded = isOn; }
 
-
- 
  // Buttons
  if ( value < 0 ) {
   
@@ -210,9 +269,12 @@ void processEvent(int value,bool isOn){
  }
 }  
 
-
+/////////////////////////////////////////////////////////////////
+// MAIN LOOP
+// --------------------------------------------------------------
+// Scan keyboard rows and columns and send on/off events.
+/////////////////////////////////////////////////////////////////
 void loop() {
-  // put your main code here, to run repeatedly:
 
   int r,c  ;
 
@@ -232,6 +294,5 @@ void loop() {
           }
           digitalWrite(rowLines[r],HIGH);
         }
-  } 
-      
+  }       
 }
