@@ -132,7 +132,7 @@ void utility1(){
 }
 
 /////////////////////////////////////////////////////////////////
-// Send a confirmation note when chenging params
+// Send a confirmation note when changing params
 /////////////////////////////////////////////////////////////////
 void sendConfirmNote(uint8_t note,uint8_t velocity) {
      midiSerial->write(0x90+currentMidiChannel);midiSerial->write(note);midiSerial->write(velocity);
